@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 擴充顏色庫，確保多種演算法都有對應顏色
+# 擴充顏色庫
 COLORS = ["#4C72B0", "#DD4444", "#2CA02C", "#FF7F0E", "#9467BD", "#8C564B", "#E377C2"]
 
 def plot_all(csv_path, title_prefix, out_prefix):
@@ -37,13 +37,11 @@ def plot_all(csv_path, title_prefix, out_prefix):
         ax.bar(counts.index, counts.values, color=color, edgecolor="black", alpha=0.85)
         ax.axvline(avg, color="black", linestyle="--", linewidth=1.5)
         
-        # 精簡文字：將平均值整合進標題，不使用 legend
         ax.set_title(f"{label} (Avg: {avg:.1f})", fontsize=14, fontweight="bold")
         ax.set_xlabel("Steps", fontsize=11)
         ax.set_ylabel("Count", fontsize=11)
         ax.grid(axis="y", linestyle=":", alpha=0.6)
 
-    # 隱藏多餘的空白格子
     for j in range(n, len(axes)):
         axes[j].set_visible(False)
 
@@ -96,10 +94,11 @@ def plot_selected_cases_bar(csv_path, title_prefix, out_prefix):
         ax.bar(offset, df[col], width, label=label, color=color, alpha=0.85)
 
     ax.set_title(f"{title_prefix} — Individual Testcase Comparison (Bar)", fontsize=16, fontweight="bold")
-    ax.set_xlabel("Testcase ID", fontsize=12)
+    ax.set_xlabel("Selected Testcase", fontsize=12)
     ax.set_ylabel("Routing Steps", fontsize=12)
     ax.set_xticks(x)
-    ax.set_xticklabels(df["ID"])
+    # 讓 X 軸顯示 case_01, case_02... 比較有儀式感
+    ax.set_xticklabels([f"case_{str(id).zfill(2)}" for id in df["ID"]], rotation=45)
     ax.legend(fontsize=11)
     ax.grid(axis="y", linestyle="--", alpha=0.6)
     
@@ -111,7 +110,7 @@ def plot_selected_cases_bar(csv_path, title_prefix, out_prefix):
 
 
 def plot_selected_cases_line(csv_path, title_prefix, out_prefix):
-    """專為『選定測資』設計：折線圖 (Line Chart)，更容易觀察趨勢"""
+    """專為『選定測資』設計：折線圖 (Line Chart)"""
     if not os.path.exists(csv_path):
         return
 
@@ -130,10 +129,10 @@ def plot_selected_cases_line(csv_path, title_prefix, out_prefix):
                 label=label, color=color, alpha=0.85)
 
     ax.set_title(f"{title_prefix} — Individual Testcase Comparison (Line)", fontsize=16, fontweight="bold")
-    ax.set_xlabel("Testcase ID", fontsize=12)
+    ax.set_xlabel("Selected Testcase", fontsize=12)
     ax.set_ylabel("Routing Steps", fontsize=12)
     ax.set_xticks(x)
-    ax.set_xticklabels(df["ID"])
+    ax.set_xticklabels([f"case_{str(id).zfill(2)}" for id in df["ID"]], rotation=45)
     ax.legend(fontsize=11)
     ax.grid(axis="both", linestyle="--", alpha=0.5)
     
@@ -147,27 +146,24 @@ def plot_selected_cases_line(csv_path, title_prefix, out_prefix):
 if __name__ == "__main__":
     print("開始繪製分析圖表...")
     
-    # 1. 畫 3D 全排列
-    plot_all("data/results_3d.csv", "3D Hypercube (40,320 Permutations)", "3d")
+    # 1. 畫 3D 全排列 (保留分布圖)
+    plot_all("data/results_3d.csv", "3D Hypercube (All 40,320)", "3d")
 
     # 2. 自動掃描並畫高維度資料
     if os.path.exists("data"):
         for fname in sorted(os.listdir("data")):
-            # 處理隨機抽樣檔案
+            # 處理隨機抽樣檔案 (保留分布圖)
             if fname.startswith("results_") and fname.endswith("_random.csv"):
                 dim_key = fname.replace("results_", "").replace("_random.csv", "")
                 dim = dim_key[0]
-                plot_all(f"data/{fname}", f"{dim}D Hypercube (Random 40,000)", f"{dim_key}_random")
+                plot_all(f"data/{fname}", f"{dim}D Hypercube (Random)", f"{dim_key}_random")
             
             # 處理選定測資檔案
             elif fname.startswith("results_") and fname.endswith("_selected.csv"):
                 dim_key = fname.replace("results_", "").replace("_selected.csv", "")
                 dim = dim_key[0]
-                # 畫出總體分布 (直方圖 + 比較曲線)
-                plot_all(f"data/{fname}", f"{dim}D Hypercube (Selected 24 Cases)", f"{dim_key}_selected")
                 
-                # 畫出專屬測資的比較圖 (長條圖 + 折線圖)
-                plot_selected_cases_bar(f"data/{fname}", f"{dim}D Hypercube", f"{dim_key}_selected")
-                plot_selected_cases_line(f"data/{fname}", f"{dim}D Hypercube", f"{dim_key}_selected")
+                plot_selected_cases_bar(f"data/{fname}", f"{dim}D Selected Testcases", f"{dim_key}_selected")
+                plot_selected_cases_line(f"data/{fname}", f"{dim}D Selected Testcases", f"{dim_key}_selected")
                 
     print("\n🎉 所有圖表已繪製完畢，請至 analysis/ 目錄查看！")
