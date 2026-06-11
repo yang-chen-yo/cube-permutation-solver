@@ -7,7 +7,7 @@ from utils import Cube
 from algorithms.bfs import BFSRouter
 from algorithms.batcher import BatcherRouter
 from algorithms.bitonic import BitonicRouter
-from algorithms.greedy_matching import GreedyMatchingRouter
+from algorithms.greedy import GreedyMatchingRouter
 
 app = Flask(__name__, static_folder="web")
 
