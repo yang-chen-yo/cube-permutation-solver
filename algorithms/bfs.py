@@ -19,7 +19,7 @@ class BFSRouter(RoutingAlgorithm):
     ``use_matchings=False`` to make one BFS step swap exactly one edge.
     """
 
-    def __init__(self, cube, use_matchings: bool = True):
+    def __init__(self, cube, use_matchings: bool = False):
         super().__init__(cube)
         self.use_matchings = use_matchings
         self.moves = self._build_moves()
