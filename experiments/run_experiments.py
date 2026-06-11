@@ -12,6 +12,7 @@ from utils import Cube
 from algorithms.bfs import BFSRouter
 from algorithms.batcher import BatcherRouter
 from algorithms.bitonic import BitonicRouter
+from algorithms.greedy import GreedyMatchingRouter
 
 
 # =============================================
@@ -51,11 +52,14 @@ def build_extra_routers(cube):
     
     # 建立你的 Bitonic (優化組)
     bitonic_seq = BitonicRouter(cube, use_parallel=False)
+
+    greedy = GreedyMatchingRouter(cube)       
     
     return [
         {"name": "OddEven_Sequential", "fn": lambda state: len(odd_even_seq.route(state))},
         {"name": "OddEven_Parallel", "fn": lambda state: len(odd_even_par.route(state))},
         {"name": "Bitonic_Sequential", "fn": lambda state: len(bitonic_seq.route(state))},
+        {"name": "Greedy_Beam_Search", "fn": lambda state: len(greedy.route(state))}, 
     ]
 
 # =============================================
