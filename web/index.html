@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>超立方體路由視覺化</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:sans-serif; background:#f0f2f5; color:#1a1a2e; display:flex; height:100vh; overflow:hidden; }
+
+#sidebar {
+  width:280px; min-width:280px; background:#ffffff; padding:20px;
+  display:flex; flex-direction:column; gap:14px; overflow-y:auto;
+  border-right:1px solid #dde1eb; box-shadow:2px 0 8px rgba(0,0,0,0.06);
+}
+h1 { font-size:15px; font-weight:600; color:#1a1a2e; }
+label { font-size:12px; color:#6b7280; display:block; margin-bottom:4px; }
+select, input[type=text] {
+  width:100%; padding:8px 10px; background:#f9fafb;
+  border:1px solid #dde1eb; border-radius:6px; color:#1a1a2e; font-size:13px;
+}
+button {
+  width:100%; padding:9px; border-radius:6px; border:none;
+  font-size:13px; font-weight:600; cursor:pointer; transition:opacity 0.2s;
+}
+button:disabled { opacity:0.35; cursor:default; }
+button:hover:not(:disabled) { opacity:0.82; }
+#btn-run  { background:#4f46e5; color:#fff; }
+#btn-play { background:#16a34a; color:#fff; }
+#btn-pause{ background:#d97706; color:#fff; }
+#btn-prev { background:#e5e7eb; color:#374151; }
+#btn-next { background:#e5e7eb; color:#374151; }
+#btn-reset{ background:#e5e7eb; color:#374151; }
+
+#status { font-size:12px; color:#6b7280; line-height:1.7; }
+#step-info {
+  font-size:12px; color:#374151; background:#f3f4f6;
+  padding:10px; border-radius:6px; line-height:1.9; display:none;
+  border:1px solid #e5e7eb;
+}
+.progress-bar { background:#e5e7eb; border-radius:4px; height:6px; overflow:hidden; }
+.progress-fill { background:#4f46e5; height:100%; transition:width 0.3s; width:0%; }
+#speed-wrap { display:flex; align-items:center; gap:8px; }
+#speed-wrap input { flex:1; }
+#speed-wrap span { font-size:12px; color:#6b7280; min-width:36px; }
+
+#canvas-wrap { flex:1; position:relative; }
+canvas { display:block; width:100%; height:100%; }
+#overlay {
+  position:absolute; top:12px; left:12px;
+  background:rgba(255,255,255,0.85); padding:8px 12px; border-radius:8px;
+  font-size:11px; color:#6b7280; pointer-events:none; line-height:1.8;
+  border:1px solid #e5e7eb;
+}
+#legend {
+  position:absolute; bottom:16px; left:12px;
+  background:rgba(255,255,255,0.9); padding:10px 14px; border-radius:8px;
+  font-size:11px; pointer-events:none; display:flex; flex-direction:column; gap:5px;
+  border:1px solid #e5e7eb;
+}
+.leg { display:flex; align-items:center; gap:7px; color:#374151; }
+.dot { width:11px; height:11px; border-radius:50%; flex-shrink:0; }
+.line-dot { width:20px; height:4px; border-radius:2px; flex-shrink:0; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>超立方體路由視覺化</h1>
+
+  <div>
+    <label>維度</label>
+    <select id="dim">
+      <option value="3">3D Hypercube（8 節點）</option>
+      <option value="4">4D Hypercube（16 節點）</option>
+    </select>
+  </div>
+
+  <div>
+    <label>演算法</label>
+    <select id="algo">
+        <option value="bfs_serial">BFS 序列（最短步數）</option>
+        <option value="bfs_parallel">BFS 平行（matching）</option>
+        <option value="batcher_serial">Batcher Odd-Even Merge（序列）</option>
+        <option value="batcher_parallel">Batcher Odd-Even Merge（平行）</option>
+        <option value="bitonic_serial">Bitonic Sort（序列）</option>
+        <option value="bitonic_parallel">Bitonic Sort（平行）</option>
+        <option value="greedy_beam">Greedy + Beam Search</option>
+    </select>
+  </div>
+
+  <div>
+    <label id="perm-label">排列輸入（8 個數字，逗號分隔）</label>
+    <input type="text" id="perm" placeholder="2,0,1,3,5,4,6,7">
+  </div>
+
+  <button id="btn-run">▶ 執行路由</button>
+  <div id="status">請輸入排列並按執行。</div>
+  <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+  <div id="step-info"></div>
+
+  <div>
+    <label>播放速度</label>
+    <div id="speed-wrap">
+      <input type="range" id="speed" min="200" max="2000" value="900" step="100">
+      <span id="speed-out">0.9s</span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:6px;">
+    <button id="btn-prev" style="flex:1" disabled>◀ 上一步</button>
+    <button id="btn-next" style="flex:1" disabled>下一步 ▶</button>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <button id="btn-play" style="flex:1" disabled>⏵ 播放</button>
+    <button id="btn-pause" style="flex:1" disabled>⏸ 暫停</button>
+  </div>
+  <button id="btn-reset" disabled>↺ 重置</button>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="overlay">拖曳旋轉 · 滾輪縮放</div>
+  <div id="legend">
+    <div class="leg"><div class="dot" style="background:#6366f1"></div><span>未排序節點</span></div>
+    <div class="leg"><div class="dot" style="background:#f59e0b"></div><span>正在交換</span></div>
+    <div class="leg"><div class="dot" style="background:#22c55e"></div><span>已排序（兩數字相同）</span></div>
+    <div class="leg"><div class="line-dot" style="background:#ef4444"></div><span>交換邊</span></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+function getPos(idx, dim) {
+  if (dim === 3) {
+    return new THREE.Vector3(
+      (idx & 1) ? 1.3 : -1.3,
+      (idx & 2) ? 1.3 : -1.3,
+      (idx & 4) ? 1.3 : -1.3
+    );
+  }
+  const scale = (idx & 8) ? 0.55 : 1.3;
+  return new THREE.Vector3(
+    ((idx & 1) ? 1 : -1) * scale,
+    ((idx & 2) ? 1 : -1) * scale,
+    ((idx & 4) ? 1 : -1) * scale
+  );
+}
+
+let scene, camera, renderer;
+let nodeMeshes = [], edgeMeshes = [], labelSprites = [];
+let currentState = [], steps = [], currentStep = -1;
+let playTimer = null;
+let isDragging = false, prevMouse = { x:0, y:0 };
+let sph = { theta:0.6, phi:1.0, r:5 };
+let currentDim = 3;
+
+function updateCamera() {
+  camera.position.set(
+    sph.r * Math.sin(sph.phi) * Math.sin(sph.theta),
+    sph.r * Math.cos(sph.phi),
+    sph.r * Math.sin(sph.phi) * Math.cos(sph.theta)
+  );
+  camera.lookAt(0, 0, 0);
+}
+
+function initThree() {
+  const wrap = document.getElementById('canvas-wrap');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf0f2f5);
+  camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
+  updateCamera();
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+  dl.position.set(5, 8, 5);
+  scene.add(dl);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = wrap.clientWidth / wrap.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  });
+  const c = document.getElementById('c');
+  c.addEventListener('mousedown', e => { isDragging=true; prevMouse={x:e.clientX,y:e.clientY}; });
+  window.addEventListener('mouseup', () => isDragging=false);
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    sph.theta -= (e.clientX-prevMouse.x)*0.008;
+    sph.phi = Math.max(0.15, Math.min(Math.PI-0.15, sph.phi+(e.clientY-prevMouse.y)*0.008));
+    prevMouse={x:e.clientX,y:e.clientY};
+    updateCamera();
+  });
+  c.addEventListener('wheel', e => {
+    sph.r = Math.max(2.5, Math.min(20, sph.r+e.deltaY*0.008));
+    updateCamera();
+  });
+  (function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera); })();
+}
+
+// 節點標籤：上方顯示「節點編號」，下方顯示「封包編號」
+function makeNodeLabel(nodeIdx, packetVal, isActive, isDone) {
+  const cv = document.createElement('canvas');
+  cv.width = 160; cv.height = 160;
+  const ctx = cv.getContext('2d');
+
+  // 背景圓
+  const bgColor = isActive ? '#fef3c7' : (isDone ? '#dcfce7' : '#eef2ff');
+  const borderColor = isActive ? '#f59e0b' : (isDone ? '#22c55e' : '#6366f1');
+  ctx.beginPath();
+  ctx.arc(80, 80, 72, 0, Math.PI*2);
+  ctx.fillStyle = bgColor;
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = borderColor;
+  ctx.stroke();
+
+  // 節點編號（上，灰色小字）
+  ctx.fillStyle = '#6b7280';
+  ctx.font = 'bold 34px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('node ' + nodeIdx, 80, 52);
+
+  // 分隔線
+  ctx.strokeStyle = isDone ? '#22c55e' : '#d1d5db';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(30, 80); ctx.lineTo(130, 80);
+  ctx.stroke();
+
+  // 封包編號（下，大字，會變動）
+  ctx.fillStyle = isActive ? '#d97706' : (isDone ? '#16a34a' : '#4f46e5');
+  ctx.font = 'bold 52px sans-serif';
+  ctx.fillText(String(packetVal), 80, 112);
+
+  const tex = new THREE.CanvasTexture(cv);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+  spr.scale.set(0.7, 0.7, 1);
+  return spr;
+}
+
+function buildScene(dim, state) {
+  [...nodeMeshes, ...edgeMeshes, ...labelSprites].forEach(o => scene.remove(o));
+  nodeMeshes=[]; edgeMeshes=[]; labelSprites=[];
+
+  const N = 1 << dim;
+  const geo = new THREE.SphereGeometry(0.08, 16, 16);
+
+  for (let i = 0; i < N; i++) {
+    const mat = new THREE.MeshPhongMaterial({ color: 0x6366f1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(getPos(i, dim));
+    scene.add(mesh);
+    nodeMeshes.push(mesh);
+
+    const lbl = makeNodeLabel(i, state[i], false, state[i]===i);
+    lbl.position.copy(getPos(i, dim));
+    scene.add(lbl);
+    labelSprites.push(lbl);
+  }
+
+  for (let u = 0; u < N; u++) {
+    for (let b = 0; b < dim; b++) {
+      const v = u ^ (1 << b);
+      if (u < v) {
+        const p1 = getPos(u, dim), p2 = getPos(v, dim);
+        const dir = new THREE.Vector3().subVectors(p2, p1);
+        const len = dir.length();
+        const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+        const cGeo = new THREE.CylinderGeometry(0.025, 0.025, len, 8);
+        const mat = new THREE.MeshPhongMaterial({ color: 0xc7d2fe });
+        const mesh = new THREE.Mesh(cGeo, mat);
+        mesh.position.copy(mid);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
+        mesh.userData = { u, v };
+        scene.add(mesh);
+        edgeMeshes.push(mesh);
+      }
+    }
+  }
+}
+
+function updateVisual(state, activeSwaps) {
+  const activeSet = new Set(activeSwaps.flat());
+
+  nodeMeshes.forEach((m, i) => {
+    if (activeSet.has(i))    m.material.color.setHex(0xf59e0b);
+    else if (state[i] === i) m.material.color.setHex(0x22c55e);
+    else                     m.material.color.setHex(0x6366f1);
+  });
+
+  edgeMeshes.forEach(m => {
+    const hot = activeSwaps.some(([u,v]) =>
+      (m.userData.u===u && m.userData.v===v) ||
+      (m.userData.u===v && m.userData.v===u)
+    );
+    m.material.color.setHex(hot ? 0xef4444 : 0xc7d2fe);
+  });
+
+  // 更新每個節點標籤（節點編號固定，封包編號更新）
+  labelSprites.forEach((oldSpr, i) => {
+    const isActive = activeSet.has(i);
+    const isDone = state[i] === i;
+    const newSpr = makeNodeLabel(i, state[i], isActive, isDone);
+    newSpr.position.copy(oldSpr.position);
+    scene.remove(oldSpr);
+    scene.add(newSpr);
+    labelSprites[i] = newSpr;
+  });
+}
+
+function showStep(idx) {
+  currentStep = idx;
+  const total = steps.length;
+  document.getElementById('progress').style.width = (total ? ((idx+1)/total*100) : 0) + '%';
+
+  const info = document.getElementById('step-info');
+  if (idx < 0) {
+    updateVisual(currentState, []);
+    info.style.display = 'none';
+    return;
+  }
+
+  const step = steps[idx];
+  updateVisual(step.state, step.swaps);
+
+  info.style.display = 'block';
+  info.innerHTML =
+    `<b>步驟 ${idx+1} / ${total}</b><br>` +
+    `交換節點：${step.swaps.map(([u,v])=>`<b style="color:#d97706">${u}</b> ↔ <b style="color:#d97706">${v}</b>`).join('、')}<br>` +
+    `目前狀態：[${step.state.map((v,i)=>
+      v===i ? `<span style="color:#16a34a;font-weight:600">${v}</span>`
+            : `<span style="color:#4f46e5">${v}</span>`
+    ).join(', ')}]`;
+}
+
+function play() {
+  if (playTimer) return;
+  const speed = parseInt(document.getElementById('speed').value);
+  document.getElementById('btn-play').disabled = true;
+  playTimer = setInterval(() => {
+    if (currentStep+1 >= steps.length) {
+      clearInterval(playTimer); playTimer=null;
+      document.getElementById('btn-play').disabled = false;
+      document.getElementById('status').textContent = '✅ 路由完成！所有節點封包就位。';
+      return;
+    }
+    showStep(currentStep+1);
+  }, speed);
+}
+
+function pause() {
+  clearInterval(playTimer); playTimer=null;
+  document.getElementById('btn-play').disabled = false;
+}
+
+function reset() {
+  pause();
+  showStep(-1);
+  document.getElementById('status').textContent = `共 ${steps.length} 步，按播放開始。`;
+}
+
+document.getElementById('dim').addEventListener('change', () => {
+  const d = parseInt(document.getElementById('dim').value);
+  const n = 1 << d;
+  document.getElementById('perm-label').textContent = `排列輸入（${n} 個數字，逗號分隔）`;
+  document.getElementById('perm').placeholder = Array.from({length:n},(_,i)=>i).join(',');
+});
+
+document.getElementById('speed').addEventListener('input', e => {
+  document.getElementById('speed-out').textContent = (e.target.value/1000).toFixed(1)+'s';
+});
+
+document.getElementById('btn-run').addEventListener('click', async () => {
+  const d = parseInt(document.getElementById('dim').value);
+  const algo = document.getElementById('algo').value;
+  const permStr = document.getElementById('perm').value.trim();
+  if (!permStr) { document.getElementById('status').textContent='請輸入排列。'; return; }
+
+  const perm = permStr.split(',').map(s=>parseInt(s.trim()));
+  document.getElementById('status').textContent='計算中...';
+  document.getElementById('btn-run').disabled=true;
+
+  try {
+    const res = await fetch('/api/route', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({dim:d, perm, algo})
+    });
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('status').textContent='錯誤：'+data.error;
+      document.getElementById('btn-run').disabled=false;
+      return;
+    }
+
+    currentDim=d; steps=data.steps; currentState=data.initial_state; currentStep=-1;
+    sph={theta:0.6, phi:1.0, r: d===3?5:8};
+    updateCamera();
+    buildScene(d, currentState);
+    updateVisual(currentState, []);
+
+    document.getElementById('progress').style.width='0%';
+    document.getElementById('status').textContent=`共 ${data.total_steps} 步，按播放開始。`;
+    document.getElementById('step-info').style.display='none';
+    ['btn-play','btn-pause','btn-prev','btn-next','btn-reset'].forEach(id=>{
+      document.getElementById(id).disabled=false;
+    });
+  } catch(e) {
+    document.getElementById('status').textContent='連線失敗，請確認後端執行中（python app.py）。';
+  }
+  document.getElementById('btn-run').disabled=false;
+});
+
+document.getElementById('btn-play').addEventListener('click', play);
+document.getElementById('btn-pause').addEventListener('click', pause);
+document.getElementById('btn-reset').addEventListener('click', reset);
+document.getElementById('btn-prev').addEventListener('click', ()=>{ pause(); showStep(Math.max(-1, currentStep-1)); });
+document.getElementById('btn-next').addEventListener('click', ()=>{ pause(); showStep(Math.min(steps.length-1, currentStep+1)); });
+
+initThree();
+buildScene(3, Array.from({length:8},(_,i)=>i));
+</script>
+</body>
+</html>
