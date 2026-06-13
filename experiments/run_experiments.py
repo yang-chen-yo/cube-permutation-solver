@@ -4,6 +4,7 @@ import random
 import sys
 import os
 import pandas as pd
+import time
 
 # 確保可以讀取到根目錄的模組
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +15,7 @@ from algorithms.batcher import BatcherRouter
 from algorithms.bitonic import BitonicRouter
 from algorithms.greedy import GreedyMatchingRouter
 
+execution_table = {}
 
 # =============================================
 # Batcher 比較器計算（僅計算網路中的比較器數量，非路由步數）
@@ -56,49 +58,21 @@ def build_extra_routers(cube):
     greedy = GreedyMatchingRouter(cube)       
     
     return [
-        {"name": "OddEven_Sequential", "fn": lambda state: len(odd_even_seq.route(state))},
-        {"name": "OddEven_Parallel", "fn": lambda state: len(odd_even_par.route(state))},
-        {"name": "Bitonic_Sequential", "fn": lambda state: len(bitonic_seq.route(state))},
-        {"name": "Greedy_Beam_Search", "fn": lambda state: len(greedy.route(state))}, 
+        {"name": "Batcher Merge sort", "fn": lambda state: len(odd_even_seq.route(state))},
+        {"name": "Advanced Batcher Merge sort", "fn": lambda state: len(odd_even_par.route(state))},
+        {"name": "Bitonic", "fn": lambda state: len(bitonic_seq.route(state))},
+        # {"name": "Greedy_Beam_Search", "fn": lambda state: len(greedy.route(state))}, 
     ]
 
 # =============================================
 # 選定測資區
 # =============================================
-SELECTED_TESTCASES = {
-    "4d": [
-        [15,0,10,4,3,11,1,7,8,5,6,2,12,9,14,13],
-        [0,8,1,12,2,5,9,14,4,6,10,7,3,11,13,15],
-        [1,5,0,8,9,11,2,15,3,12,4,6,10,14,13,7],
-        [1,9,0,4,10,8,2,11,3,15,5,12,7,14,13,6],
-        [3,1,7,13,11,0,8,15,2,5,10,6,9,14,12,4],
-        [3,1,11,7,8,0,9,5,2,6,15,13,14,4,10,12],
-        [3,5,11,1,8,0,9,7,2,6,14,13,10,4,12,15],
-        [0,1,2,3,4,5,6,8,7,9,10,11,12,13,14,15],
-        [6,2,14,13,3,11,10,7,0,5,8,1,15,12,4,9],
-        [6,4,11,0,9,8,12,2,15,5,3,7,10,13,14,1],
-        [13,1,14,0,9,2,15,6,12,8,11,3,4,5,7,10],
-        [0,2,3,5,7,11,13,1,4,6,8,9,10,12,14,15],
-        [8,14,0,3,2,5,10,7,4,9,12,11,1,13,6,15],
-        [7,14,9,6,11,0,13,2,5,15,10,12,1,4,3,8],
-        [1,2,4,8,0,3,5,6,7,9,10,11,12,13,14,15],
-        [0,1,14,3,4,5,7,8,15,13,10,6,9,12,11,2],
-        [2,5,3,15,4,13,6,7,8,9,10,11,12,1,14,0],
-        [0,1,2,3,4,5,14,11,8,6,10,9,12,15,13,7],
-        [1,2,3,4,5,6,7,8,9,0,10,11,12,13,14,15],
-        [1,1,3,9,2,7,13,15,14,8,1,4,10,0,12,6],
-        [5,0,12,15,7,1,5,2,4,10,13,3,11,8,14,9],
-        [9,0,2,15,11,6,7,8,14,3,4,13,5,1,12,10],
-        [6,15,9,5,13,12,3,7,2,10,1,11,0,14,4,8],
-        [1,1,3,9,2,7,13,15,14,8,1,4,10,0,12,6,5],
-    ],
-}
+from testcases import SELECTED_TESTCASES
 
 # 各維度隨機抽樣數量設定
 RANDOM_SAMPLE_SIZE = {
-    "4d": 40000,
+    "4d": 40000, 
 }
-
 
 def clean_permutations(raw_data, n):
     cleaned = []
@@ -135,6 +109,11 @@ def run_3d():
     bfs_par = BFSRouter(cube, use_matchings=True)
     extra_routers = build_extra_routers(cube)
 
+    algo_time = {
+        r["name"]: 0.0
+        for r in extra_routers
+    }
+
     print("正在計算 BFS 全狀態地圖 (Sequential & Parallel Ground Truth)...")
     dist_seq = bfs_seq.all_distances()
     dist_par = bfs_par.all_distances()
@@ -153,9 +132,20 @@ def run_3d():
             "Batcher_Comparators_Only": batcher_sort_count(state),
         }
         for r in extra_routers:
-            row[f"{r['name']}_Steps"] = r["fn"](state)
+            # row[f"{r['name']}_Steps"] = r["fn"](state)
+            
+            start = time.perf_counter()
+
+            steps = r["fn"](state)
+
+            elapsed = time.perf_counter() - start
+            algo_time[r["name"]] += elapsed
+
+            row[f"{r['name']}_Steps"] = steps
+            row[f"{r['name']}_Time_ms"] = elapsed * 1000
         results.append(row)
 
+        
         if (idx + 1) % 5000 == 0:
             print(f"  已完成 {idx + 1} / 40320 筆...")
 
@@ -163,18 +153,32 @@ def run_3d():
     pd.DataFrame(results).to_csv("data/results_3d.csv", index=False)
     print("3D 實驗完成！結果已儲存至 data/results_3d.csv")
 
+    print("\n=== 3D Runtime ===")
+    for name, t in algo_time.items():
+        print(f"{name}: {t:.4f} sec")
+
+        if name not in execution_table:
+            execution_table[name] = {}
+
+        execution_table[name]["Q3"] = round(t, 4)
+
 
 # =============================================
 # 高維度：選定測資 + 隨機抽樣
 # =============================================
 def run_selected():
+    
     for dim_key, raw_data in SELECTED_TESTCASES.items():
-        dim = int(dim_key[0])
+        dim = int(dim_key[:-1])
         n   = 1 << dim
         print(f"\n正在初始化 {dim}D 超立方體...")
         cube = Cube(dim=dim)
         extra_routers = build_extra_routers(cube)
-
+        algo_time = {
+            r["name"]: 0.0
+            for r in extra_routers
+        }
+        
         # --- 選定測資 ---
         selected = clean_permutations(raw_data, n)
         selected_results = []
@@ -182,11 +186,23 @@ def run_selected():
         for idx, state in enumerate(selected):
             row = {
                 "ID": idx + 1,
-                "Permutation": str(list(state)),
+                #"Permutation": str(list(state)),
                 "Batcher_Comparators_Only": batcher_sort_count(state),
             }
+            if dim < 13:
+                row["Permutation"] =  str(list(state[:20]))
             for r in extra_routers:
-                row[f"{r['name']}_Steps"] = r["fn"](state)
+                # row[f"{r['name']}_Steps"] = r["fn"](state)
+                
+                start = time.perf_counter()
+                steps = r["fn"](state)
+                elapsed = time.perf_counter() - start
+
+                algo_time[r["name"]] += elapsed
+
+
+                row[f"{r['name']}_Steps"] = steps
+                row[f"{r['name']}_Time_ms"] = elapsed * 1000
             selected_results.append(row)
 
         os.makedirs("data", exist_ok=True)
@@ -195,7 +211,7 @@ def run_selected():
         print(f"選定測資完成！結果已儲存至 {sel_path}")
 
         # --- 隨機抽樣 ---
-        sample_size = RANDOM_SAMPLE_SIZE.get(dim_key, 40000)
+        sample_size = RANDOM_SAMPLE_SIZE.get(dim_key, 0)
         print(f"開始隨機抽樣 {sample_size} 筆 {dim}D 排列...")
         random.seed(42)
         sample_results = []
@@ -207,7 +223,17 @@ def run_selected():
                 "Batcher_Comparators_Only": batcher_sort_count(state),
             }
             for r in extra_routers:
-                row[f"{r['name']}_Steps"] = r["fn"](state)
+                #row[f"{r['name']}_Steps"] = r["fn"](state)
+                start = time.perf_counter()
+
+                steps = r["fn"](state)
+
+                elapsed = time.perf_counter() - start
+
+                algo_time[r["name"]] += elapsed
+
+                row[f"{r['name']}_Steps"] = steps
+                row[f"{r['name']}_Time_ms"] = elapsed * 1000
             sample_results.append(row)
 
             if (idx + 1) % 10000 == 0:
@@ -217,11 +243,19 @@ def run_selected():
         pd.DataFrame(sample_results).to_csv(rnd_path, index=False)
         print(f"隨機抽樣完成！結果已儲存至 {rnd_path}")
 
+        print(f"\n=== {dim_key.upper()} Runtime ===")
+
+        for name, t in algo_time.items():
+
+            if name not in execution_table:
+                execution_table[name] = {}
+
+            dimension_name = f"{dim}D"
+            execution_table[name][dimension_name] = round(t, 4)
 
 def main():
     run_3d()
     run_selected()
-
 
 if __name__ == "__main__":
     main()
